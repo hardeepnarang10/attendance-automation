@@ -5,18 +5,58 @@ from functools import partial
 import cv2
 from pyzbar.pyzbar import decode
 
+global is_not_win
+is_not_win = False
+
+# Configure platform-specific values
+try:
+    # Only available on windows
+    from winsound import Beep
+
+except ModuleNotFoundError:
+    # global is_not_win
+    is_not_win = True
+
+
+class Attribute:
+
+    # Meta class
+    # Pre-set attributes that define behaviour of application; Used by all other classes
+    def __init__(self):
+
+        self.attendees = list()
+
 
 class Utility:
 
-    pass
-
-    # Implement feedback mechanism
+    # Non-visual feedback - audio
+    def beep(self, frequency=2500, duration=300):
+        global is_not_win
+        if not is_not_win:
+            Beep(frequency, duration)  # Based on Windows API - Single platform support
+        else:
+            print('\a')  # Cross platform. Limited control over frequency and duration
 
     # Implement warning and flush system
 
     # Implement attendance export channeling - flush() should trigger export
 
-    # Implement secondary-class frame update: Maybe functionality to show simple text on frame
+    # Print text on frame
+    def frame_text(self, frame, text, font=cv2.FONT_HERSHEY_PLAIN):
+        cv2.putText(
+            img=frame,
+            text=text,
+            org=(5, 30),
+            fontFace=font,
+            fontScale=1.5,
+            color=(255, 0, 0),
+            thickness=3)
+
+    # Add attendee record; give feedback
+    def attend(self, attendee):
+        if str(attendee) not in str(self.attribute.attendees):
+            self.attribute.attendees.append(attendee)
+            self.beep(frequency=2500, duration=300)
 
     # Implement function to check time-status; controller needs to be in-sync with time delta
 
@@ -70,6 +110,9 @@ class Monitor(Utility):
         self.frame_cam.clear()
         self.btn_monitor.setText(self.qtranslate(self.centralwidget_name, 'START'))
 
+        # Remove this later
+        print(self.attribute.attendees)
+
     # Trigger to start/stop monitor cam
     def monitor_trigger(self):
 
@@ -98,7 +141,13 @@ class Monitor(Utility):
             # Decoded object is bytes type
             qr_data = decoded.data.decode('utf-8')
 
-            print(qr_data)
+            # Parse and format qr_data
+            qr_data_list = qr_data.strip('][').replace("'", '').split(', ')
+            image_text = qr_data_list[0] + ': ' + qr_data_list[1].replace('  ', ' ')
+
+            # Send qr_data to put text on frame and record attendance entry
+            self.frame_text(frame=frame, text=image_text)
+            self.attend(qr_data_list)
 
 
 class Application(Monitor):
@@ -127,6 +176,9 @@ class Application(Monitor):
         self.setup_dashboard(self.main_window)
         self.setup_cam()
         self.setup_btn()
+
+        # Import attributes
+        self.attribute = Attribute()
 
         # Trigger setup functions
         self.connect_slots()
