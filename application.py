@@ -3,6 +3,7 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from functools import partial
 import cv2
+from pyzbar.pyzbar import decode
 
 
 class Utility:
@@ -34,11 +35,12 @@ class Monitor(Utility):
         # If self.monitor is True, attendance monitor starts
         while self.monitor:
 
-            # Capture frames from self.capture source
+            # Capture frames from self.capture source and flips them correctly
             _, frame = self.capture.read()
-
-            # cv2 records frames from camera which are vertically flipped: we need to flip them back
             frame = cv2.flip(frame, 1)
+
+            # Check for qr codes in frame
+            self.processor(frame)
 
             # cv2 frames are numpy.ndarray type objects: convert them to QImage
             qimage = QtGui.QImage(frame, frame.shape[1], frame.shape[0], frame.shape[1] * 3,
@@ -81,6 +83,22 @@ class Monitor(Utility):
             self.monitor = True
             self.cam_on = True
             self.monitor_cam()
+
+    # Process frame for QR Code
+    def processor(self, frame):
+
+        decoded_list = decode(frame)
+
+        # If frame doesn't contain QR Code, return flow of execution
+        if not decoded_list:
+            return
+        else:
+            decoded = decoded_list[0]
+
+            # Decoded object is bytes type
+            qr_data = decoded.data.decode('utf-8')
+
+            print(qr_data)
 
 
 class Application(Monitor):
