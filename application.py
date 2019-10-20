@@ -4,6 +4,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from functools import partial
 import cv2
 from pyzbar.pyzbar import decode
+from os.path import abspath, dirname, join
+from json import loads
+from math import floor
 
 global is_not_win
 is_not_win = False
@@ -18,6 +21,68 @@ except ModuleNotFoundError:
     is_not_win = True
 
 
+class Student:
+
+    def __init__(self, filepath):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.data_file = filepath
+
+        # Create shell containers for class-wide use
+        self.database = list()
+        self.student_list = list()
+
+        # Call method in sequence
+        self.read_db()
+
+    # Read database file to shell container; sort list
+    def read_db(self):
+
+        try:
+            with open(self.data_file, mode='r') as database:
+                self.database = loads(database.read())
+                database.close()
+        except FileNotFoundError:
+            print('Required resources not complete! Check requirements.')
+            exit(-404)
+
+        # Sort database by roll_number in increasing order
+        self.database = sorted(self.database, key=lambda i: i['Roll_Number'])
+
+    # Validate attendee entry against database - uses binary search algorithm
+    def validate(self, roll, name, base_list=None, left_index=0, right_index=None):
+
+        # Case when called from outer scope
+        if not base_list and not left_index and not right_index:
+            base_list = self.database
+            right_index = len(self.database) - 1
+
+        # Check base case
+        if right_index >= left_index:
+
+            # Find middle of array length and floor it down to integer
+            mid = floor((left_index + right_index) / 2)
+
+            # If element is present at the middle itself
+            if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
+                return base_list[mid]
+
+            # If element is smaller than mid, check left_index subarray
+            elif int(base_list[mid]['Roll_Number']) > int(roll):
+                return self.validate(base_list=base_list, left_index=left_index, right_index=mid-1,
+                                     roll=roll, name=name)
+
+            # Else check right subarray
+            else:
+                return self.validate(base_list=base_list, left_index=mid+1, right_index=right_index,
+                                     roll=roll, name=name)
+
+        else:
+            # Element is not present in the array
+            return None
+
+
 class Attribute:
 
     # Meta class
@@ -25,6 +90,32 @@ class Attribute:
     def __init__(self):
 
         self.attendees = list()
+
+
+class Object:
+
+    # Meta class
+    # Instantiate objects as utilities needed by other classes
+    def __init__(self):
+
+        # Meta - assign folder names containing other folders or file; fetch their absolute path
+        self.json_folder_name = 'resource'
+        self.json_folder_path = abspath(join(dirname(__file__), self.json_folder_name))
+
+        # Assign filename containing operational info; fetch their path - uses meta
+        self.file_student = 'student.json'
+        self.path_student = join(self.json_folder_path, self.file_student)
+
+        # Instantiate objects
+        # Create instance of Attribute class to fetch attributes from
+        self.attribute = Attribute()
+
+        # Instantiate objects using __init__() and attribute object values
+        self.student = Student(filepath=self.path_student)
+
+    # Function when called returns instance of attribute object used in this class
+    def return_attribute_obj(self):
+        return self.attribute
 
 
 class Utility:
@@ -143,11 +234,18 @@ class Monitor(Utility):
 
             # Parse and format qr_data
             qr_data_list = qr_data.strip('][').replace("'", '').split(', ')
-            image_text = qr_data_list[0] + ': ' + qr_data_list[1].replace('  ', ' ')
 
-            # Send qr_data to put text on frame and record attendance entry
-            self.frame_text(frame=frame, text=image_text)
-            self.attend(qr_data_list)
+            # Check input data signature. Ignore bad input.
+            try:
+                verified_student = self.obj.student.validate(roll=qr_data_list[0], name=qr_data_list[1])
+            except IndexError:
+                return
+
+            # If attendee data in database, print message and call attend()
+            if verified_student:
+                image_text = qr_data_list[0] + ': ' + qr_data_list[1].replace('  ', ' ')
+                self.frame_text(frame=frame, text=image_text)
+                self.attend(verified_student)
 
 
 class Application(Monitor):
@@ -178,7 +276,8 @@ class Application(Monitor):
         self.setup_btn()
 
         # Import attributes
-        self.attribute = Attribute()
+        self.obj = Object()
+        self.attribute = self.obj.return_attribute_obj()
 
         # Trigger setup functions
         self.connect_slots()
