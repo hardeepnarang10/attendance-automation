@@ -259,6 +259,104 @@ class Token:
             main_application.processEvents()
 
 
+class Timer:
+
+    def __init__(self, filepath):
+
+        # Read lecture breakpoints to a container dict()
+        try:
+            with open(filepath, mode='r') as breakpoints:
+                self.lecture = loads(breakpoints.read())
+                breakpoints.close()
+        except FileNotFoundError:
+            print('Required resources not complete! Check requirements.')
+            exit(-404)
+
+        # Read key name from timing.json file
+        key_name = list(self.lecture.keys())[0]
+
+        # Create list of time slots as tuple pairs from timing breakpoints
+        self.timing_list = [(i, j) for i, j in zip(self.lecture[key_name][:-1],
+                                                   self.lecture[key_name][1:])]
+
+    # Determine time slot of current lecture
+    def lecture_time(self):
+
+        present = (datetime.now().year, datetime.now().month, datetime.now().day)
+
+        # Iterate over each time slot to determine if it encompasses current time
+        for entry in self.timing_list:
+
+            # Process time slot format for timing info
+            start_time, end_time = entry[0], entry[1]
+            start_hour = int(start_time[:start_time.index(':')])
+            start_minute = int(start_time[(start_time.index(':') + 1):])
+            end_hour = int(end_time[:end_time.index(':')])
+            end_minute = int(end_time[(end_time.index(':')+1):])
+
+            start = datetime(year=present[0], month=present[1], day=present[2], hour=start_hour, minute=start_minute)
+            end = datetime(year=present[0], month=present[1], day=present[2], hour=end_hour, minute=end_minute)
+
+            # Return matching time slot along with lecture end time
+            if start < datetime.now() < end:
+                return datetime(present[0], present[1], present[2],
+                                hour=end_hour, minute=end_minute), self.timing_list.index(entry), entry
+
+        # Else return None if loop runs through
+
+
+class Scheduler:
+
+    def __init__(self, path_timing, path_lecture):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.path_timing = path_timing
+        self.path_lecture = path_lecture
+
+        self.temp_key = 'start'
+
+        # Create shell containers for class-wide use
+        self.timing = dict()
+        self.lecture_table = dict()
+
+        # Call methods in sequence
+        self.structure()
+
+    # Read timing and lecture files; create timing structure
+    def structure(self):
+        with open(self.path_timing, mode='r') as time_points:
+            self.timing = loads(time_points.read())
+            time_points.close()
+
+        # Read key name from timing.json file
+        key_name = list(self.timing.keys())[0]
+
+        # Create list of time slots as tuple pairs from timing breakpoints and add to self.timing dictionary
+        self.timing[self.temp_key] = [(i, j) for i, j in zip(self.timing[key_name][:-1],
+                                                             self.timing[key_name][1:])]
+
+        try:
+            with open(self.path_lecture, mode='r') as table:
+                self.lecture_table = loads(table.read())
+                table.close()
+        except FileNotFoundError:
+            print('Required resources not complete! Check requirements.')
+            exit(-404)
+
+    # Return subject name from lecture table
+    def lecture(self, section, index):
+
+        # Fetch lecture table only for the given section
+        lecture_schedule = self.lecture_table[section]
+
+        # Return subject name index present day with index lecture number
+        try:
+            return lecture_schedule[list(lecture_schedule.keys())[datetime.today().weekday()]][index]
+        except IndexError:
+            return None
+
+
 class Attribute:
 
     # Meta class
@@ -266,10 +364,14 @@ class Attribute:
     def __init__(self):
 
         self.tokenLimit = 1000000000000
+        self.warning_period_minutes = 1
         self.isAuthenticated = False
-
+        self.isWarned = False
+        self.isFlushed = False
         self.host_faculty = dict()
         self.attendees = list()
+        self.lecture_time = list()
+        self.lecture_number = int()
 
 
 class Object:
@@ -288,9 +390,13 @@ class Object:
         # Assign filename containing operational info; fetch their path - uses meta
         self.file_faculty = 'faculty.json'
         self.file_student = 'student.json'
+        self.file_lecture = 'lecture.json'
+        self.file_timing = 'timing.json'
 
         self.path_faculty = join(self.json_folder_path, self.file_faculty)
         self.path_student = join(self.json_folder_path, self.file_student)
+        self.path_lecture = join(self.json_folder_path, self.file_lecture)
+        self.path_timing = join(self.json_folder_path, self.file_timing)
 
         # Assign folders to export to; fetch path - uses meta
         self.token_folder_name = 'session'
@@ -306,6 +412,8 @@ class Object:
         # Instantiate objects using __init__() and attribute object values
         self.faculty = Faculty(filepath=self.path_faculty, token=self.attribute.tokenLimit)
         self.student = Student(filepath=self.path_student, output_dir=self.attendee_folder_path)
+        self.timer = Timer(filepath=self.path_timing)
+        self.scheduler = Scheduler(path_lecture=self.path_lecture, path_timing=self.path_timing)
         self.token = Token(faculty_path=self.path_faculty, output_dir=self.token_folder_path,
                            token_size=self.attribute.tokenLimit)
 
@@ -324,9 +432,49 @@ class Utility:
         else:
             print('\a')  # Cross platform. Limited control over frequency and duration
 
-    # Implement warning and flush system
+    # Warn using feedback mechanism - audio
+    def warn(self):
+        self.attribute.isWarned = True
+        self.attribute.isFlushed = False
+        self.console_output('Warning Generated!')
+        self.beep(frequency=5000, duration=2000)
 
-    # Implement attendance export channeling - flush() should trigger export
+    # Flush attendance if lecture over, or on program close
+    def flush(self):
+
+        # If system isn't authenticated, return execution sequence
+        if not self.attribute.isAuthenticated:
+            return
+
+        # If host faculty present, starts export procedure
+        if self.attribute.host_faculty:
+
+            # Collective dictionary with lecture record
+            attendance = dict()
+
+            # Assign copies of dictionary not alias
+            attendance['host'] = self.attribute.host_faculty.copy()
+            attendance['attendees'] = self.attribute.attendees.copy()
+
+            # Export attendance; return unique subject key
+            key = self.export_attendance(attendance)
+
+            # If key returned, add attendance entry to total lecture record of day with key as index
+            if key:
+                self.attribute.attendance_all[key] = attendance.copy()
+            else:
+                return
+
+        # Set flags for warning and flush state; clear exported lecture records
+        self.attribute.isFlushed = True
+        self.attribute.isAuthenticated = False
+        self.attribute.host_faculty.clear()
+        self.attribute.attendees.clear()
+        self.obj.student.student_list.clear()
+
+        # Print message and give feedback
+        self.console_output('Attendance Flushed!')
+        self.beep(frequency=3500, duration=1000)
 
     # Set authentication flags; provide authentication feedback
     def auth(self, faculty_data):
@@ -368,6 +516,10 @@ class Monitor(Utility):
 
         # If self.monitor is True, attendance monitor starts
         while self.monitor:
+
+            time_check = self.time_check()
+            if time_check == -1:
+                return
 
             # Capture frames from self.capture source and flips them correctly
             _, frame = self.capture.read()
@@ -420,6 +572,48 @@ class Monitor(Utility):
             self.monitor = True
             self.cam_on = True
             self.monitor_cam()
+
+    # Checks present time on each iteration
+    def time_check(self):
+
+        # Time-checks and operations:
+        # First perform check for current time vs time slots in time table
+        # Then obtain current time window with start and end element
+        # On change in lecture_number, reset isWarned attribute; change self.lecture_time
+        if self.obj.timer.lecture_time():
+
+            # Obtain current lecture end (datetime object), lecture number, and lecture time slot
+            self.attribute.lecture_end, lecture_num, self.attribute.lecture_tuple = self.obj.timer.lecture_time()
+
+            # Evaluate if lecture number has changed
+            if not self.attribute.lecture_number == lecture_num:
+
+                # Update lecture time slot on lecture number change; reset isWarned flag
+                self.attribute.lecture_time = list(self.attribute.lecture_tuple)
+                self.attribute.isWarned = False
+
+            # Update current lecture_number
+            self.attribute.lecture_number = lecture_num
+
+        else:
+
+            # If current time doesn't match a time slot, college is over
+            print('Outside college working hours!')
+            self.monitor = False
+            self.stop_monitor()
+
+            # Return a value to signal the loop
+            return -1
+
+        # Update seconds left to warn and flush - based on time slots in lecture table
+        # Fire time-based events: warn() and flush()
+        warn_time = self.attribute.lecture_end - timedelta(minutes=self.attribute.warning_period_minutes)
+        warn_delay = (warn_time - datetime.now()).total_seconds()
+        flush_delay = (self.attribute.lecture_end - datetime.now()).total_seconds()
+        if not self.attribute.isWarned and (0 <= warn_delay <= 1):
+            self.warn()
+        elif not self.attribute.isFlushed and (0 <= flush_delay <= 1):
+            self.flush()
 
     # Process frame for QR Code
     def processor(self, frame):
