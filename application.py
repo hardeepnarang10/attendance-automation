@@ -4,6 +4,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from functools import partial
 import cv2
 from pyzbar.pyzbar import decode
+from qrcode import QRCode, constants
 from os.path import abspath, dirname, join
 from json import loads
 from math import floor
@@ -23,11 +24,12 @@ except ModuleNotFoundError:
 
 class Student:
 
-    def __init__(self, filepath):
+    def __init__(self, filepath, output_dir):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
         self.data_file = filepath
+        self.output_dir = output_dir
 
         # Create shell containers for class-wide use
         self.database = list()
@@ -65,22 +67,53 @@ class Student:
             mid = floor((left_index + right_index) / 2)
 
             # If element is present at the middle itself
-            if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
-                return base_list[mid]
+            try:
+                if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
+                    return base_list[mid]
 
-            # If element is smaller than mid, check left_index subarray
-            elif int(base_list[mid]['Roll_Number']) > int(roll):
-                return self.validate(base_list=base_list, left_index=left_index, right_index=mid-1,
-                                     roll=roll, name=name)
+                # If element is smaller than mid, check left_index subarray
+                elif int(base_list[mid]['Roll_Number']) > int(roll):
+                    return self.validate(base_list=base_list, left_index=left_index, right_index=mid-1,
+                                         roll=roll, name=name)
 
-            # Else check right subarray
-            else:
-                return self.validate(base_list=base_list, left_index=mid+1, right_index=right_index,
-                                     roll=roll, name=name)
+                # Else check right subarray
+                else:
+                    return self.validate(base_list=base_list, left_index=mid+1, right_index=right_index,
+                                         roll=roll, name=name)
+
+            except ValueError:
+                return None
 
         else:
             # Element is not present in the array
             return None
+
+    # Generate attendee QR code
+    def code_generator(self, main_application):
+
+        # Generate QR code for each attendee in dataset
+        for each_attendee in self.database:
+
+            # Print attendee data
+            print(list(each_attendee.values()))
+
+            # Set QR code instance properties and save it to output_dir folder
+            qr = QRCode(
+                version=1,
+                error_correction=constants.ERROR_CORRECT_H,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(list(each_attendee.values()))
+            qr.make(fit=True)
+
+            img = qr.make_image(fill_color="black", back_color="white")
+
+            img.save(join(self.output_dir, each_attendee['Roll_Number'] + ' - ' +
+                          each_attendee['Name'] + '.png'), 'PNG')
+
+            # Unfreeze event loop - tell it to process events
+            main_application.processEvents()
 
 
 class Attribute:
@@ -100,18 +133,25 @@ class Object:
 
         # Meta - assign folder names containing other folders or file; fetch their absolute path
         self.json_folder_name = 'resource'
+        self.database_folder_name = 'database'
+
         self.json_folder_path = abspath(join(dirname(__file__), self.json_folder_name))
+        self.database_folder_path = abspath(join(dirname(__file__), self.database_folder_name))
 
         # Assign filename containing operational info; fetch their path - uses meta
         self.file_student = 'student.json'
         self.path_student = join(self.json_folder_path, self.file_student)
+
+        # Assign folders to export to; fetch path - uses meta
+        self.attendee_folder_name = 'attendees'
+        self.attendee_folder_path = join(self.database_folder_path, self.attendee_folder_name)
 
         # Instantiate objects
         # Create instance of Attribute class to fetch attributes from
         self.attribute = Attribute()
 
         # Instantiate objects using __init__() and attribute object values
-        self.student = Student(filepath=self.path_student)
+        self.student = Student(filepath=self.path_student, output_dir=self.attendee_folder_path)
 
     # Function when called returns instance of attribute object used in this class
     def return_attribute_obj(self):
@@ -274,6 +314,7 @@ class Application(Monitor):
         self.setup_dashboard(self.main_window)
         self.setup_cam()
         self.setup_btn()
+        self.attach_btn()
 
         # Import attributes
         self.obj = Object()
@@ -328,11 +369,22 @@ class Application(Monitor):
             button.setText(self.qtranslate(self.centralwidget_name, btn_text))
             _btn_offset_x_ = _btn_offset_x_ + _btn_height_ + _btn_offset_margin_
 
+    # Create shell button instance - use this to bridge static slots with dynamic buttons
+    def attach_btn(self):
+        self.button_session = self.btn_session
+        self.button_attendee = self.btn_attendee
+        self.button_schedule = self.btn_schedule
+        self.button_monitor = self.btn_monitor
+
     # Connect push button slots
     def connect_slots(self):
 
+        # Attach code_generator() as signal to button_monitor_attendee click event
+        self.button_attendee.clicked.connect(partial(self.obj.student.code_generator,
+                                                     self.application))
+
         # Attach monitor_trigger() as signal to btn_monitor click event
-        self.btn_monitor.clicked.connect(partial(self.monitor_trigger))
+        self.button_monitor.clicked.connect(partial(self.monitor_trigger))
 
 
 if __name__ == '__main__':
