@@ -3,6 +3,8 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from functools import partial
 import cv2
+from datetime import datetime, timedelta
+from hashlib import sha256
 from pyzbar.pyzbar import decode
 from qrcode import QRCode, constants
 from os.path import abspath, dirname, join
@@ -20,6 +22,80 @@ try:
 except ModuleNotFoundError:
     # global is_not_win
     is_not_win = True
+
+
+class Faculty:
+
+    def __init__(self, filepath, token):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.token_size = token
+        self.filepath = filepath
+
+        # Create shell containers for class-wide use
+        self.database = dict()
+        self.session_faculty = dict()
+
+        # Set static properties
+        self.date = int(datetime.now().month + datetime.now().day + datetime.now().year)
+
+        # Call methods in sequence
+        self.read_db()
+        self.generate_sessions()
+
+    # Read database file to shell container
+    def read_db(self):
+
+        try:
+            with open(self.filepath, mode='r') as faculty_file:
+                self.database = loads(faculty_file.read())
+                faculty_file.close()
+        except FileNotFoundError:
+            print('Required resources not complete! Check requirements.')
+            exit(-404)
+
+    # Generate sessions for present day
+    def generate_sessions(self):
+
+        # Hashing algorithm
+        for faculty in self.database:
+
+            # Mangle numerical part of faculty id with string part after having multiplied former with present date
+            mangler = faculty['Code'][:3] + str(int(faculty['Code'][3:]) * self.date)
+
+            # Stable hash creates instance of sha256() - onto hashing function
+            stable_hash = sha256()
+
+            # Pass mangler as c-string
+            stable_hash.update(mangler.encode())
+
+            # Generate hash-bytes
+            hash_bytes = stable_hash.digest()
+
+            # Convert hash bytes to integer; limit them by stable modulus hashing against token_size integer
+            faculty['session'] = int.from_bytes(hash_bytes, byteorder='big', signed=False) % self.token_size
+
+    # Authenticate session input
+    def auth(self, token):
+
+        # Check length of token against length of token_size(known); check if token is all digits
+        if len(token) <= len(str(self.token_size)) and token.isdigit():
+
+            # Check is token is a sub-string of database - optimization
+            if str(token) in str(self.database):
+                faculty = dict()
+
+                # Fetch first result whose hash matches with token
+                for faculty_member in self.database:
+                    if int(token) == int(faculty_member['session']):
+                        faculty = faculty_member
+                        break
+
+                # Assign session faculty in first iteration only
+                if not str(faculty) == str(self.session_faculty):
+                    self.session_faculty = faculty.copy()
+                    return self.session_faculty
 
 
 class Student:
@@ -116,12 +192,83 @@ class Student:
             main_application.processEvents()
 
 
+class Token:
+
+    def __init__(self, faculty_path, output_dir, token_size):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.token_size = token_size
+        self.faculty_path = faculty_path
+        self.output_dir = output_dir
+
+        # Create shell containers for class-wide use
+        self.database = list()
+
+        # Set static properties
+        self.date = int(datetime.now().month + datetime.now().day + datetime.now().year)
+
+        # Call methods in sequence
+        self.read_db()
+
+    # Read database file to shell container
+    def read_db(self):
+        with open(self.faculty_path, mode='r') as database:
+            self.database = loads(database.read())
+            database.close()
+
+    # Generate sessions for present day; generate QR codes session token; mail QR codes to respective faculty
+    def generate_session(self, main_application):
+
+        # Iterate for each faculty entry in self.database:
+        for faculty in self.database:
+
+            # Mangle numerical part of faculty id with string part after having multiplied former with present date
+            mangler = (faculty['Code'])[:3] + str(int(faculty['Code'][3:]) * self.date)
+
+            # Stable hash creates instance of sha256() - onto hashing function
+            stable_hash = sha256()
+
+            # Pass mangler as c-string
+            stable_hash.update(mangler.encode())
+
+            # Generate hash-bytes
+            hash_bytes = stable_hash.digest()
+
+            # Convert hash bytes to integer; limit them by stable modulus hashing against token_size integer
+            faculty['session'] = int.from_bytes(hash_bytes, byteorder='big', signed=False) % self.token_size
+
+            # Print faculty data - without the actual tokens
+            print(list(faculty.values())[0:-1])
+
+            # Set QR code instance properties and save it to output_dir folder
+            qr = QRCode(version=1, box_size=10, border=4,
+                        error_correction=constants.ERROR_CORRECT_H,)
+            qr.add_data(faculty['session'])
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+
+            # Name of token file (image file, png extension) and path
+            token_name = faculty['Code'] + '_' + faculty['Name'].replace(' ', '_') + '.png'
+            img_path = join(self.output_dir, token_name)
+
+            # Save token file in PNG format
+            img.save(img_path, 'PNG')
+
+            # Unfreeze event loop - tell it to process events
+            main_application.processEvents()
+
+
 class Attribute:
 
     # Meta class
     # Pre-set attributes that define behaviour of application; Used by all other classes
     def __init__(self):
 
+        self.tokenLimit = 1000000000000
+        self.isAuthenticated = False
+
+        self.host_faculty = dict()
         self.attendees = list()
 
 
@@ -139,11 +286,17 @@ class Object:
         self.database_folder_path = abspath(join(dirname(__file__), self.database_folder_name))
 
         # Assign filename containing operational info; fetch their path - uses meta
+        self.file_faculty = 'faculty.json'
         self.file_student = 'student.json'
+
+        self.path_faculty = join(self.json_folder_path, self.file_faculty)
         self.path_student = join(self.json_folder_path, self.file_student)
 
         # Assign folders to export to; fetch path - uses meta
+        self.token_folder_name = 'session'
         self.attendee_folder_name = 'attendees'
+
+        self.token_folder_path = join(self.database_folder_path, self.token_folder_name)
         self.attendee_folder_path = join(self.database_folder_path, self.attendee_folder_name)
 
         # Instantiate objects
@@ -151,7 +304,10 @@ class Object:
         self.attribute = Attribute()
 
         # Instantiate objects using __init__() and attribute object values
+        self.faculty = Faculty(filepath=self.path_faculty, token=self.attribute.tokenLimit)
         self.student = Student(filepath=self.path_student, output_dir=self.attendee_folder_path)
+        self.token = Token(faculty_path=self.path_faculty, output_dir=self.token_folder_path,
+                           token_size=self.attribute.tokenLimit)
 
     # Function when called returns instance of attribute object used in this class
     def return_attribute_obj(self):
@@ -171,6 +327,13 @@ class Utility:
     # Implement warning and flush system
 
     # Implement attendance export channeling - flush() should trigger export
+
+    # Set authentication flags; provide authentication feedback
+    def auth(self, faculty_data):
+        self.attribute.isAuthenticated = True
+        self.attribute.host_faculty = faculty_data
+        print(f"Lecture held by: {faculty_data['Name']} ({faculty_data['Code']})")
+        self.beep(frequency=2500, duration=1250)
 
     # Print text on frame
     def frame_text(self, frame, text, font=cv2.FONT_HERSHEY_PLAIN):
@@ -272,20 +435,36 @@ class Monitor(Utility):
             # Decoded object is bytes type
             qr_data = decoded.data.decode('utf-8')
 
-            # Parse and format qr_data
-            qr_data_list = qr_data.strip('][').replace("'", '').split(', ')
+            # Authentication tokens are all digits, and have less number of digits than tokenLimit.
+            # Also, only check if not authenticaed already
+            if qr_data.isdigit() and len(qr_data) <= len(str(self.attribute.tokenLimit
+                                                             )) and not self.attribute.isAuthenticated:
 
-            # Check input data signature. Ignore bad input.
-            try:
-                verified_student = self.obj.student.validate(roll=qr_data_list[0], name=qr_data_list[1])
-            except IndexError:
-                return
+                # Authenticate faculty
+                session_faculty = self.obj.faculty.auth(qr_data)
 
-            # If attendee data in database, print message and call attend()
-            if verified_student:
-                image_text = qr_data_list[0] + ': ' + qr_data_list[1].replace('  ', ' ')
-                self.frame_text(frame=frame, text=image_text)
-                self.attend(verified_student)
+                # If authenticated successfully, call self.auth() with returned data
+                if session_faculty: self.auth(session_faculty)
+
+            # If already authenticated and qrdata is all digits, print 'active session' message
+            elif qr_data.isdigit() and self.attribute.isAuthenticated:
+                self.frame_text(frame=frame, text='Session Activated!')
+
+            # If authenticated, and input is string, check if attendee is in database
+            elif self.attribute.isAuthenticated and not qr_data.isdigit():
+                qr_data_list = qr_data.strip('][').replace("'", '').split(', ')
+
+                # Check input data signature. Ignore bad input.
+                try:
+                    verified_student = self.obj.student.validate(roll=qr_data_list[0], name=qr_data_list[1])
+                except IndexError:
+                    return
+
+                # If attendee data in database, print message and call attend()
+                if verified_student:
+                    image_text = qr_data_list[0] + ': ' + qr_data_list[1].replace('  ', ' ')
+                    self.frame_text(frame=frame, text=image_text)
+                    self.attend(verified_student)
 
 
 class Application(Monitor):
@@ -378,6 +557,9 @@ class Application(Monitor):
 
     # Connect push button slots
     def connect_slots(self):
+
+        # Attach token_generator() as signal to button_session click event
+        self.button_session.clicked.connect(partial(self.obj.token.generate_session, self.application))
 
         # Attach code_generator() as signal to button_monitor_attendee click event
         self.button_attendee.clicked.connect(partial(self.obj.student.code_generator,
