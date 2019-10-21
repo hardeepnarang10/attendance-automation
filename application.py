@@ -1,18 +1,41 @@
 #!/usr/bin/env python3
 
-from PyQt5 import QtCore, QtGui, QtWidgets
-from functools import partial
-import cv2
-from datetime import datetime, timedelta
-from hashlib import sha256
-from pyzbar.pyzbar import decode
-from qrcode import QRCode, constants
-from os.path import abspath, dirname, join
-from json import loads
-from math import floor
 
+# Import dependencies
+
+from sys import exit
 global is_not_win
 is_not_win = False
+
+try:
+    from include.meta.__init__ import *
+
+except ModuleNotFoundError:
+    print('Required files missing.\nExiting Application...')
+    exit(-500)
+
+try:
+    import cv2
+    from PyQt5 import QtCore, QtGui, QtWidgets
+    from functools import partial
+    from pyzbar.pyzbar import decode
+    from datetime import datetime, timedelta
+    from pandas import DataFrame, ExcelWriter
+    from smtplib import SMTP_SSL, SMTPAuthenticationError, SMTPServerDisconnected, SMTPRecipientsRefused
+    from socket import gaierror
+    from qrcode import constants, QRCode
+    from json import loads
+    from hashlib import sha256
+    from os.path import abspath, basename, dirname, join
+    from math import floor
+    from argparse import ArgumentParser
+
+except ModuleNotFoundError:
+    print("\nIncomplete installation. Install required pip packages.")
+    print("List of required packages in 'requirements.txt' file.")
+    print("\nRun following command to install required packages:")
+    print("\n\npip install - r requirements.txt\n")
+    exit(-11)
 
 # Configure platform-specific values
 try:
@@ -143,22 +166,18 @@ class Student:
             mid = floor((left_index + right_index) / 2)
 
             # If element is present at the middle itself
-            try:
-                if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
-                    return base_list[mid]
+            if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
+                return base_list[mid]
 
-                # If element is smaller than mid, check left_index subarray
-                elif int(base_list[mid]['Roll_Number']) > int(roll):
-                    return self.validate(base_list=base_list, left_index=left_index, right_index=mid-1,
-                                         roll=roll, name=name)
+            # If element is smaller than mid, check left_index subarray
+            elif int(base_list[mid]['Roll_Number']) > int(roll):
+                return self.validate(base_list=base_list, left_index=left_index, right_index=mid+1,
+                                     roll=roll, name=name)
 
-                # Else check right subarray
-                else:
-                    return self.validate(base_list=base_list, left_index=mid+1, right_index=right_index,
-                                         roll=roll, name=name)
-
-            except ValueError:
-                return None
+            # Else check right subarray
+            else:
+                return self.validate(base_list=base_list, left_index=mid-1, right_index=right_index,
+                                     roll=roll, name=name)
 
         else:
             # Element is not present in the array
@@ -217,7 +236,7 @@ class Token:
             self.database = loads(database.read())
             database.close()
 
-    # Generate sessions for present day; generate QR codes session token; mail QR codes to respective faculty
+    # Generate sessions for present day; generate QR codes session token
     def generate_session(self, main_application):
 
         # Iterate for each faculty entry in self.database:
@@ -307,10 +326,17 @@ class Timer:
 
 class Scheduler:
 
-    def __init__(self, path_timing, path_lecture):
+    def __init__(self, batch_name, output_dir_path, path_timing, path_lecture):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
+        self.date = str(datetime.now().year) + '{:02d}'.format(datetime.now().month) +\
+                    '{:02d}'.format(datetime.now().day)
+
+        # Assign name of excel file (xlsx extension)
+        self.filename = batch_name + ' - ' + self.date + '.xlsx'
+        self.filepath = join(output_dir_path, self.filename)
+
         self.path_timing = path_timing
         self.path_lecture = path_lecture
 
@@ -356,6 +382,112 @@ class Scheduler:
         except IndexError:
             return None
 
+    # Generate lecture schedule excel file with multiple sheets for different sections
+    def schedule(self):
+
+        # Print message to let user know of this action
+        print('Generating lecture schedule (Excel file: ' + self.filename + ')')
+
+        # Instantiate writer engine - with path to export it to
+        writer = ExcelWriter(self.filepath, engine='xlsxwriter')
+
+        # Instantiate workbook object - bound to writer object
+        workbook = writer.book
+
+        # Add formatting options
+        # bold = workbook.add_format({'bold': True, 'center_across': True})
+        center = workbook.add_format({'center_across': True})
+
+        # Iterate over lectures dict() - may contain multiple lecture table record for different sections
+        for key, val in self.lecture_table.items():
+
+            # Key contains section name, val contains section schedule
+            # Create dataframe
+            data_frame = DataFrame(val.values(), index=val.keys(),
+                                   columns=[str(lecture_time).strip(')(').replace("'", "").replace(",", " -") for
+                                            lecture_time in self.timing[self.temp_key]])
+
+            # Add a worksheet to workbook - key is the name of the sheet
+            worksheet = workbook.add_worksheet(key)
+            writer.sheets[key] = worksheet
+
+            # Format column width
+            worksheet.set_column(0, (len(self.timing[self.temp_key])), 35, center)
+
+            # Add dataframe as a single sheet using writer engine
+            data_frame.to_excel(writer, sheet_name=key, index_label=key)
+
+        # Save writer file to the path passed as a parameter earlier
+        writer.save()
+
+
+class Export:
+
+    def __init__(self, folder, name):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.folder = folder
+        self.name = name
+
+        # Set static properties
+        self.present = str(datetime.now().year) + '-' + str(datetime.now().month) + '-' + str(datetime.now().day)
+
+        # Add date to filename to keep one file record for the entire day
+        self.file = self.name + ' ' + self.present + '.xlsx'
+        self.path = join(self.folder, self.file)
+
+    # Create and export dataframe from containers, to excel file(s)
+    def export(self, attendance):
+
+        # Instantiate writer engine - with path to export it to
+        writer = ExcelWriter(self.path, engine='xlsxwriter')
+
+        # Instantiate workbook object - bound to writer object
+        workbook = writer.book
+
+        # Add formatting options
+        bold = workbook.add_format({'bold': True, 'center_across': True})
+        center = workbook.add_format({'center_across': True})
+
+        # Iterate over attendance dict() - may contain multiple attendance record of entire day
+        for key, val in attendance.items():
+
+            # Key contains name of subject + time slot; perform segregation
+            lecture_time = key[key.index('('):]
+
+            key = key[:key.index('(')-1]
+            # Make key unique by adding timestamp to subject name
+            key = key[:25] + ' ' + lecture_time[1:lecture_time.index('-')].replace(':', '')
+
+            # Create host and attendees dataframes
+            host_df = DataFrame([val[list(val.keys())[0]]['Name'].title()],
+                                index=[val[list(val.keys())[0]]['Code']],
+                                columns=['Host Faculty'])
+            attendee_df = DataFrame([attendee['Name'].title() for attendee in val[list(val.keys())[1]]],
+                                    index=[attendee['Roll_Number'] for attendee in val[list(val.keys())[1]]],
+                                    columns=['Attendees']).sort_index()
+
+            # Add a worksheet to workbook - key is the name of the sheet
+            worksheet = workbook.add_worksheet(str(key))
+            writer.sheets[str(key)] = worksheet
+            worksheet.write_string(0, 0, lecture_time, bold)
+            worksheet.write_string(0, 1, key[:-5], bold)
+
+            # Format column width
+            worksheet.set_column(0, 1, 35, center)
+
+            # Add dataframes to a single sheet using writer engine
+            host_df.to_excel(writer, sheet_name=str(key), index_label='Code', startrow=1, startcol=0)
+            attendee_df.to_excel(writer, sheet_name=str(key), index_label='Roll Number',
+                                 startrow=host_df.shape[0] + 3, startcol=0)
+
+        # Save writer file to the path passed as a parameter earlier
+        writer.save()
+
+        # Return export filepath
+        return self.path
+
 
 class Attribute:
 
@@ -365,11 +497,16 @@ class Attribute:
 
         self.tokenLimit = 1000000000000
         self.warning_period_minutes = 1
+
+        self.batch_name = 'CSE 5X'
+
         self.isAuthenticated = False
         self.isWarned = False
         self.isFlushed = False
+        self.isTokenGenerated = False
         self.host_faculty = dict()
         self.attendees = list()
+        self.attendance_all = dict()
         self.lecture_time = list()
         self.lecture_number = int()
 
@@ -378,7 +515,7 @@ class Object:
 
     # Meta class
     # Instantiate objects as utilities needed by other classes
-    def __init__(self):
+    def __init__(self, qicon, application_window):
 
         # Meta - assign folder names containing other folders or file; fetch their absolute path
         self.json_folder_name = 'resource'
@@ -401,9 +538,13 @@ class Object:
         # Assign folders to export to; fetch path - uses meta
         self.token_folder_name = 'session'
         self.attendee_folder_name = 'attendees'
+        self.schedule_folder_name = 'schedule'
+        self.attendance_folder_name = 'attendance'
 
         self.token_folder_path = join(self.database_folder_path, self.token_folder_name)
         self.attendee_folder_path = join(self.database_folder_path, self.attendee_folder_name)
+        self.schedule_folder_path = join(self.database_folder_path, self.schedule_folder_name)
+        self.attendance_folder_path = join(self.database_folder_path, self.attendance_folder_name)
 
         # Instantiate objects
         # Create instance of Attribute class to fetch attributes from
@@ -412,8 +553,10 @@ class Object:
         # Instantiate objects using __init__() and attribute object values
         self.faculty = Faculty(filepath=self.path_faculty, token=self.attribute.tokenLimit)
         self.student = Student(filepath=self.path_student, output_dir=self.attendee_folder_path)
+        self.export = Export(folder=self.attendance_folder_path, name=self.attribute.batch_name)
         self.timer = Timer(filepath=self.path_timing)
-        self.scheduler = Scheduler(path_lecture=self.path_lecture, path_timing=self.path_timing)
+        self.scheduler = Scheduler(batch_name=self.attribute.batch_name, output_dir_path=self.schedule_folder_path,
+                                   path_lecture=self.path_lecture, path_timing=self.path_timing)
         self.token = Token(faculty_path=self.path_faculty, output_dir=self.token_folder_path,
                            token_size=self.attribute.tokenLimit)
 
@@ -436,7 +579,7 @@ class Utility:
     def warn(self):
         self.attribute.isWarned = True
         self.attribute.isFlushed = False
-        self.console_output('Warning Generated!')
+        print('Warning Generated!')
         self.beep(frequency=5000, duration=2000)
 
     # Flush attendance if lecture over, or on program close
@@ -473,8 +616,30 @@ class Utility:
         self.obj.student.student_list.clear()
 
         # Print message and give feedback
-        self.console_output('Attendance Flushed!')
+        print('Attendance Flushed!')
         self.beep(frequency=3500, duration=1000)
+
+    # Adjust parameters and call export functions
+    def export_attendance(self, attendance):
+
+        # Fetch subject name from Scheduler class based on batch_name and lecture_number
+        subject = self.obj.scheduler.lecture(self.attribute.batch_name, self.attribute.lecture_number)
+
+        # Create shell container to store attendance contents
+        attendance_dict = dict()
+
+        # Create unique key by concatenating subject name and lecture time slot of current lecture
+        key_name = subject + ' ' +\
+                   str(self.attribute.lecture_time).replace("['", "(").replace("']", ")").replace("', '", "-")
+
+        # Add lecture record to whole day's attendance
+        attendance_dict[key_name] = attendance.copy()
+
+        # Call export function which returns path of excel_file it created
+        excel_file = self.obj.export.export(attendance_dict)
+
+        # Return unique key
+        return key_name
 
     # Set authentication flags; provide authentication feedback
     def auth(self, faculty_data):
@@ -500,7 +665,40 @@ class Utility:
             self.attribute.attendees.append(attendee)
             self.beep(frequency=2500, duration=300)
 
-    # Implement function to check time-status; controller needs to be in-sync with time delta
+    # Disable interface capabilties.
+    def college_over(self):
+        if not self.obj.timer.lecture_time():
+            self.button_monitor.setDisabled(True)
+            self.button_monitor.setText(self.qtranslate(self.centralwidget_name, 'Outside College Working Hours'))
+
+    # Check weekday and compare against time table.
+    def is_holiday(self):
+
+        # Check if section name matches one in database
+        for section in self.obj.scheduler.lecture_table:
+
+            # Fetch section data
+            if self.attribute.batch_name == section:
+
+                # Check if section doesn't have lecture entries in present day schedule
+                # Print message and partially disable interface capabilities
+                if not datetime.now().strftime("%A") in str(self.obj.scheduler.lecture_table[section].keys()):
+                    self.btn_monitor.setText(self.qtranslate(self.centralwidget_name, 'College is off today!'))
+                    for btn in self.buttons:
+                        if btn == 'btn_schedule' or btn == 'btn_attendee':
+                            continue
+                        getattr(self, btn).setDisabled(True)
+
+                # Break loop to prevent execution of 'else' block
+                break
+
+        # No match found for section name - print message and partially disable interface capabilities
+        else:
+            print('Section name not found in database!')
+            for btn in self.buttons:
+                if btn == 'btn_schedule':
+                    continue
+                getattr(self, btn).setDisabled(True)
 
 
 class Monitor(Utility):
@@ -508,15 +706,18 @@ class Monitor(Utility):
     # Start attendance monitor - write authentication check and control here
     def monitor_cam(self):
 
+        # Print message
+        print('Starting monitor mode...')
+
         # Setup video capture stream from specified capture device
         self.capture = cv2.VideoCapture(self.capture_device, cv2.CAP_DSHOW)
 
-        # Change START on btn_monitor to STOP
-        self.btn_monitor.setText(self.qtranslate(self.centralwidget_name, 'STOP'))
+        # Change START on button_monitor to STOP
+        self.button_monitor.setText(self.qtranslate(self.centralwidget_name, 'STOP Monitor'))
 
-        # If self.monitor is True, attendance monitor starts
         while self.monitor:
 
+            # Check for lecture time, warning, lecture_flush, college over & total_flush - move this step up sequence
             time_check = self.time_check()
             if time_check == -1:
                 return
@@ -525,12 +726,15 @@ class Monitor(Utility):
             _, frame = self.capture.read()
             frame = cv2.flip(frame, 1)
 
-            # Check for qr codes in frame
-            self.processor(frame)
+            # Check for qr codes in frame - handle authentication and attendance
+            # Return frame with added properties
+            process_frame = self.processor(frame)
+            if process_frame == -1:
+                continue
 
             # cv2 frames are numpy.ndarray type objects: convert them to QImage
             qimage = QtGui.QImage(frame, frame.shape[1], frame.shape[0], frame.shape[1] * 3,
-                                  QtGui.QImage.Format_RGB888).rgbSwapped()
+                                 QtGui.QImage.Format_RGB888).rgbSwapped()
 
             # Further convert QImage to QPixmap object
             cam_pixmap = QtGui.QPixmap(qimage)
@@ -538,37 +742,53 @@ class Monitor(Utility):
             # Render QPixmap to camera container(QFrame object)
             self.frame_cam.setPixmap(cam_pixmap)
 
-            # Check if main window is closed: stops attendance monitor if it is
-            if not self.main_window.isVisible():
-                self.stop_monitor()
+            # # Check if main window is closed: stops attendance monitor if it is, or reopens window in same state
+            # if not self.main_window.isVisible():
+            #     # self.stop_monitor()
+            #     self.main_window.show()
 
             # Tell event loop to process events
             self.application.processEvents()
 
+        # Remark: Only reached on stop_monitor() call - syncs with total_flush
+        else:
+            if self.cam_on:
+                self.stop_monitor()
+
     # Stop attendance monitor
     def stop_monitor(self):
+
+        # Print stopping message
+        print('Stopping monitor mode...')
+
+        # Reset application state
         self.monitor = False
         self.cam_on = False
+
+        # Release camera lock
         self.capture.release()
-        # cv2.destroyAllWindows()
 
-        # Clear camera frame - QFrame and reset btn_monitor text
+        # Clear camera frame - QFrame and reset button_monitor text
         self.frame_cam.clear()
-        self.btn_monitor.setText(self.qtranslate(self.centralwidget_name, 'START'))
+        self.button_monitor.setText(self.qtranslate(self.centralwidget_name, 'START Monitor'))
 
-        # Remove this later
-        print(self.attribute.attendees)
+        # Check if lecture active - flush attendance if True
+        if self.attribute.host_faculty:
+            self.flush()
+
+        # Export record
+        if self.attribute.attendance_all:
+            excel_file = self.obj.export.export(self.attribute.attendance_all)
 
     # Trigger to start/stop monitor cam
     def monitor_trigger(self):
 
         # Check status of attendance monitor to determine further action
         if self.cam_on:
-            print('Turning off monitor mode...')  # Not the best place to put this message - only for debugging
             self.stop_monitor()
 
         else:
-            print('Turning on monitor mode...')  # Again not the best place - Put these messages in start/stop funcs
+            # Set application state and launch camera monitor
             self.monitor = True
             self.cam_on = True
             self.monitor_cam()
@@ -601,6 +821,7 @@ class Monitor(Utility):
             print('Outside college working hours!')
             self.monitor = False
             self.stop_monitor()
+            self.college_over()
 
             # Return a value to signal the loop
             return -1
@@ -618,7 +839,13 @@ class Monitor(Utility):
     # Process frame for QR Code
     def processor(self, frame):
 
-        decoded_list = decode(frame)
+        # If exception thrown, then no camera is present - or invalid source defined
+        try:
+            decoded_list = decode(frame)
+        except TypeError:
+            print('Camera not found!')
+            self.monitor = False
+            return -1
 
         # If frame doesn't contain QR Code, return flow of execution
         if not decoded_list:
@@ -629,8 +856,7 @@ class Monitor(Utility):
             # Decoded object is bytes type
             qr_data = decoded.data.decode('utf-8')
 
-            # Authentication tokens are all digits, and have less number of digits than tokenLimit.
-            # Also, only check if not authenticaed already
+            # Authentication tokens are all digits, and have less number of digits than tokenLimit. Also, only check if not authenticaed already
             if qr_data.isdigit() and len(qr_data) <= len(str(self.attribute.tokenLimit
                                                              )) and not self.attribute.isAuthenticated:
 
@@ -665,16 +891,19 @@ class Application(Monitor):
 
     def __init__(self):
 
-        # Initialize PyQt5 application and main window
+        # Instantiate PyQt5 application and main window
         self.application = QtWidgets.QApplication([])
         self.main_window = QtWidgets.QMainWindow()
 
         # Define interface variables
         self.qtranslate = QtCore.QCoreApplication.translate
+        self.qfont = QtGui.QFont()
+        self.qicon = QtGui.QIcon()
+
         self.buttons = {'btn_session': 'Generate Session Tokens',
                         'btn_attendee': 'Generate Attendee Tokens',
-                        'btn_schedule': 'Launch Schedule Manager',
-                        'btn_monitor': 'Monitor Attendance'}
+                        'btn_schedule': 'Generate Lecture Schedule',
+                        'btn_monitor': 'START Monitor'}
         self.centralwidget_name = 'dashboard'
         self.monitor = bool()
         self.cam_on = bool()
@@ -689,15 +918,17 @@ class Application(Monitor):
         self.setup_btn()
         self.attach_btn()
 
-        # Import attributes
-        self.obj = Object()
+        # Import attributes and objects
+        self.obj = Object(qicon=self.qicon, application_window=self.application)
         self.attribute = self.obj.return_attribute_obj()
 
         # Trigger setup functions
         self.connect_slots()
 
-        # Translate components
-        self.btn_monitor.setText(self.qtranslate(self.centralwidget_name, 'START'))
+        # Check if outside college hours
+        # Check for holiday
+        self.college_over()
+        self.is_holiday()
 
         # Show main window
         self.main_window.show()
@@ -707,8 +938,12 @@ class Application(Monitor):
 
     # Setup main_window
     def setup_dashboard(self, dashboard_window):
+
+        # Set main window object name
         dashboard_window.setObjectName(self.centralwidget_name)
-        dashboard_window.resize(1000, 518)
+
+        # Set window fixed size - prevent maximize-restore
+        dashboard_window.setFixedSize(1000, 518)
 
         # Set dashboard_window as central widget (root) which further contains (encloses) other widgets
         self.centralwidget = QtWidgets.QWidget(dashboard_window)
@@ -730,7 +965,7 @@ class Application(Monitor):
         _btn_height_ = 108
         _btn_offset_margin_ = 15
 
-        # Initialize button objects using self.buttons dict() items
+        # Instantiate button objects using self.buttons dict() items
         for btn_name, btn_text in self.buttons.items():
 
             # Bind button object as an attribute of class instance
@@ -740,6 +975,8 @@ class Application(Monitor):
             button = getattr(self, btn_name)
             button.setGeometry(QtCore.QRect(675, _btn_offset_x_, 305, _btn_height_))
             button.setText(self.qtranslate(self.centralwidget_name, btn_text))
+
+            # Update next button offset
             _btn_offset_x_ = _btn_offset_x_ + _btn_height_ + _btn_offset_margin_
 
     # Create shell button instance - use this to bridge static slots with dynamic buttons
@@ -757,9 +994,12 @@ class Application(Monitor):
 
         # Attach code_generator() as signal to button_monitor_attendee click event
         self.button_attendee.clicked.connect(partial(self.obj.student.code_generator,
-                                                     self.application))
+        self.application))
 
-        # Attach monitor_trigger() as signal to btn_monitor click event
+        # Attach generator.run)sequence() as signal to button_schedule click event
+        self.button_schedule.clicked.connect(partial(self.obj.scheduler.schedule))
+
+        # Attach monitor_trigger() as signal to button_monitor click event
         self.button_monitor.clicked.connect(partial(self.monitor_trigger))
 
 
