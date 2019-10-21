@@ -662,7 +662,6 @@ class Object:
 
         # Instantiate objects
         # Create instance of Attribute class to fetch attributes from
-        # emulated console - this needs to be passed as an argument to other classes
         self.attribute = Attribute()
 
         # Instantiate objects using __init__() and attribute object values
@@ -807,7 +806,7 @@ class Utility:
                 if not datetime.now().strftime("%A") in str(self.obj.scheduler.lecture_table[section].keys()):
                     self.btn_monitor.setText(self.qtranslate(self.centralwidget_name, 'College is off today!'))
                     for btn in self.buttons:
-                        if btn == 'btn_schedule' or btn == 'btn_attendee':
+                        if btn == 'btn_schedule' or btn == 'btn_attendee' or btn == 'btn_config':
                             continue
                         getattr(self, btn).setDisabled(True)
 
@@ -818,7 +817,7 @@ class Utility:
         else:
             print('Section name not found in database!')
             for btn in self.buttons:
-                if btn == 'btn_schedule':
+                if btn == 'btn_schedule' or btn == 'btn_config':
                     continue
                 getattr(self, btn).setDisabled(True)
 
@@ -997,7 +996,8 @@ class Monitor(Utility):
             # Decoded object is bytes type
             qr_data = decoded.data.decode('utf-8')
 
-            # Authentication tokens are all digits, and have less number of digits than tokenLimit. Also, only check if not authenticaed already
+            # Authentication tokens are all digits, and have less number of digits than tokenLimit.
+            # Also, only check if not authenticated already
             if qr_data.isdigit() and len(qr_data) <= len(str(self.attribute.tokenLimit
                                                              )) and not self.attribute.isAuthenticated:
 
@@ -1044,6 +1044,7 @@ class Application(Monitor):
         self.buttons = {'btn_session': 'Generate Session Tokens',
                         'btn_attendee': 'Generate Attendee Tokens',
                         'btn_schedule': 'Generate Lecture Schedule',
+                        'btn_config': 'Configure AMC Values',
                         'btn_monitor': 'START Monitor'}
         self.centralwidget_name = 'dashboard'
         self.monitor = bool()
@@ -1058,6 +1059,9 @@ class Application(Monitor):
         self.setup_cam()
         self.setup_btn()
         self.attach_btn()
+
+        # Add console_emulation
+        self.setup_console()
 
         # Import attributes and objects
         # Passed print() which prints output to console emulation in application instead of stdout
@@ -1085,7 +1089,7 @@ class Application(Monitor):
         dashboard_window.setObjectName(self.centralwidget_name)
 
         # Set window fixed size - prevent maximize-restore
-        dashboard_window.setFixedSize(1000, 518)
+        dashboard_window.setFixedSize(1000, 706)
 
         # Set window title
         dashboard_window.setWindowTitle(self.qtranslate(self.centralwidget_name, "AMC Dashboard"))
@@ -1154,12 +1158,27 @@ class Application(Monitor):
             # Update next button offset
             _btn_offset_x_ = _btn_offset_x_ + _btn_height_ + _btn_offset_margin_
 
+            # Special case when it's the last button - in grid with AMC console
+            if btn_name == last_button_key:
+                _btn_height_ = int(1.6*_btn_height_)
+
     # Create shell button instance - use this to bridge static slots with dynamic buttons
     def attach_btn(self):
         self.button_session = self.btn_session
         self.button_attendee = self.btn_attendee
         self.button_schedule = self.btn_schedule
+        self.button_config = self.btn_config
         self.button_monitor = self.btn_monitor
+
+    # Setup console_emulation in application using QTextBrowser object
+    def setup_console(self):
+        self.textbrowser_console = QtWidgets.QTextBrowser(self.centralwidget)
+        self.textbrowser_console.setGeometry(QtCore.QRect(20, 513, 640, 173))
+        self.textbrowser_console.viewport().setProperty("cursor", QtGui.QCursor(QtCore.Qt.IBeamCursor))
+        self.textbrowser_console.setStyleSheet("background: rgb(10, 10, 10); color: white;")
+        self.qfont.setPointSize(10)
+        self.textbrowser_console.setFont(self.qfont)
+        self.textbrowser_console.setPlaceholderText(self.qtranslate(self.centralwidget_name, 'AMC System Console'))
 
     # Connect push button slots
     def connect_slots(self):
@@ -1168,8 +1187,7 @@ class Application(Monitor):
         self.button_session.clicked.connect(partial(self.obj.token.generate_session, self.application))
 
         # Attach code_generator() as signal to button_monitor_attendee click event
-        self.button_attendee.clicked.connect(partial(self.obj.student.code_generator,
-        self.application))
+        self.button_attendee.clicked.connect(partial(self.obj.student.code_generator, self.application))
 
         # Attach generator.run)sequence() as signal to button_schedule click event
         self.button_schedule.clicked.connect(partial(self.obj.scheduler.schedule))
