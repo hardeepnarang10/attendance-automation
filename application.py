@@ -22,6 +22,7 @@ try:
     from datetime import datetime, timedelta
     from pandas import DataFrame, ExcelWriter
     from smtplib import SMTP_SSL, SMTPAuthenticationError, SMTPServerDisconnected, SMTPRecipientsRefused
+    from email.message import EmailMessage
     from socket import gaierror
     from qrcode import constants, QRCode
     from json import loads
@@ -213,7 +214,7 @@ class Student:
 
 class Token:
 
-    def __init__(self, faculty_path, output_dir, token_size):
+    def __init__(self, faculty_path, output_dir, token_size, mailer_object):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
@@ -223,6 +224,9 @@ class Token:
 
         # Create shell containers for class-wide use
         self.database = list()
+
+        # Fetch mailer object to enable mailing capabilities
+        self.mailer = mailer_object
 
         # Set static properties
         self.date = int(datetime.now().month + datetime.now().day + datetime.now().year)
@@ -236,7 +240,7 @@ class Token:
             self.database = loads(database.read())
             database.close()
 
-    # Generate sessions for present day; generate QR codes session token
+    # Generate sessions for present day; generate QR codes session token; mail QR codes to respective faculty
     def generate_session(self, main_application):
 
         # Iterate for each faculty entry in self.database:
@@ -273,6 +277,9 @@ class Token:
 
             # Save token file in PNG format
             img.save(img_path, 'PNG')
+
+            # Mail token QR code to respective faculty
+            self.mailer.send_token(email=faculty['Email'], attachment=img_path, name=faculty['Name'])
 
             # Unfreeze event loop - tell it to process events
             main_application.processEvents()
@@ -489,6 +496,110 @@ class Export:
         return self.path
 
 
+class Mailer:
+
+    def __init__(self, batch, email, password, hod_email, main_window):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.email = email
+        self.password = password
+        self.hod_email = hod_email
+        self.batch = batch
+
+        # Instance of main application - pass control of the event loop
+        self.main_window = main_window
+
+    # Create mail-able message containing attendance information
+    def send_attendance(self, attachment, attendees_len=None, lecture=None, email=None, lecture_len=None):
+
+        # Instantiate EmailMessage object
+        msg = EmailMessage()
+        msg['From'] = self.email
+
+        # Define case for mailing to host faculty
+        if attendees_len and lecture and email and not lecture_len:
+            msg['Subject'] = f'Lecture Attendance: {lecture}'
+            msg['To'] = email
+            msg.set_content(f'{attendees_len} attendees.\n\nDate: {datetime.today().date()} '
+                            f'({datetime.now().strftime("%A")})\nLecture: {lecture}')
+            msg.add_alternative(f'<strong>{attendees_len} attendees.</strong><br><br>Date: {datetime.today().date()} '
+                                f'({datetime.now().strftime("%A")})<br>Lecture: {lecture}', subtype='html')
+
+        # Define case for mailing to HOD
+        elif lecture_len:
+            msg['Subject'] = f'Attendance {self.batch} {datetime.today().date()}'
+            msg['To'] = self.hod_email
+            msg.set_content(f'{lecture_len} lectures held today.\n\nDate: {datetime.today().date()} '
+                            f'({datetime.now().strftime("%A")}).')
+            msg.add_alternative(f'<strong>{lecture_len} lectures held today.</strong><br><br>Date: '
+                                f'{datetime.today().date()} ({datetime.now().strftime("%A")}).', subtype='html')
+
+        # Read attachment file from file system
+        with open(attachment, mode='rb') as record:
+            record_data = record.read()
+            record_name = basename(record.name)
+
+        # Add attachment to message
+        msg.add_attachment(record_data, maintype='application', subtype='octet-stream', filename=record_name)
+
+        # Pass message to send mail
+        self.send(msg)
+
+    # Create mail-able message containing session token
+    def send_token(self, attachment, email=None, name=None):
+
+        # Instantiate EmailMessage object
+        msg = EmailMessage()
+        msg['From'] = self.email
+
+        # Makes sure name and email of the faculty are given - deprecated other case where only name is given
+        if email and name:
+            msg['Subject'] = f'Access Token: {name}'
+            msg['To'] = email
+            msg.set_content(f'Valid for: {datetime.today().date()} ({datetime.now().strftime("%A")})')
+            msg.add_alternative(f'Valid for: <strong>{datetime.today().date()}</strong> '
+                                f'({datetime.now().strftime("%A")})', subtype='html')
+
+        # Read attachment file from file system
+        with open(attachment, mode='rb') as record:
+            record_data = record.read()
+            record_name = basename(record.name)
+
+        # Add attachment to message
+        msg.add_attachment(record_data, maintype='image', subtype='png', filename=record_name)
+
+        # Pass message to send mail function
+        self.send(msg)
+
+    # Send mail
+    def send(self, message):
+
+        # Try sending mail
+        try:
+            with SMTP_SSL('smtp.gmail.com', 465) as smtp:
+
+                # Login to controller account; print message
+                print('Sending mail now!')
+                smtp.login(self.email, self.password)
+
+                # Unfreeze event loop - network operation
+                self.main_window.processEvents()
+
+                # Send message
+                smtp.send_message(message)
+
+        # Except cases for connection error, socket busy, or authentication failure - print message
+        except SMTPAuthenticationError:
+            print('Authentication Failure!\nCheck credentials in Configuration section.\n'
+                  'Also check support for less secure apps in your account:\n'
+                  'Login to controller account.\nGoto: myaccount.google.com/lesssecureapps\n'
+                  'Allow less secure apps access.\n\nToken saved locally instead')
+
+        except (gaierror, SMTPServerDisconnected, SMTPRecipientsRefused, OSError) as connectionError:
+            print('Failure to establish connection with the server.\nToken saved locally instead.')
+
+
 class Attribute:
 
     # Meta class
@@ -499,6 +610,9 @@ class Attribute:
         self.warning_period_minutes = 1
 
         self.batch_name = 'CSE 5X'
+        self.hod_email = 'dummy_mail@gmail.com'
+        self.amc_email = 'dummy_mail@gmail.com'
+        self.amc_password = 'dummy_pass'
 
         self.isAuthenticated = False
         self.isWarned = False
@@ -557,8 +671,11 @@ class Object:
         self.timer = Timer(filepath=self.path_timing)
         self.scheduler = Scheduler(batch_name=self.attribute.batch_name, output_dir_path=self.schedule_folder_path,
                                    path_lecture=self.path_lecture, path_timing=self.path_timing)
+        self.mailer = Mailer(batch=self.attribute.batch_name, email=self.attribute.amc_email,
+                             password=self.attribute.amc_password, hod_email=self.attribute.hod_email,
+                             main_window=application_window)
         self.token = Token(faculty_path=self.path_faculty, output_dir=self.token_folder_path,
-                           token_size=self.attribute.tokenLimit)
+                           token_size=self.attribute.tokenLimit, mailer_object=self.mailer)
 
     # Function when called returns instance of attribute object used in this class
     def return_attribute_obj(self):
@@ -637,6 +754,10 @@ class Utility:
 
         # Call export function which returns path of excel_file it created
         excel_file = self.obj.export.export(attendance_dict)
+
+        # Mail attendance record to host faculty's email - pass excel file path as parameter
+        self.obj.mailer.send_attendance(attachment=excel_file, email=self.attribute.host_faculty['Email'],
+                                        attendees_len=len(self.attribute.attendees), lecture=subject)
 
         # Return unique key
         return key_name
@@ -776,9 +897,11 @@ class Monitor(Utility):
         if self.attribute.host_faculty:
             self.flush()
 
-        # Export record
+        # Export and mail record
         if self.attribute.attendance_all:
             excel_file = self.obj.export.export(self.attribute.attendance_all)
+            self.obj.mailer.send_attendance(attachment=excel_file,
+                                            lecture_len=len(self.attribute.attendance_all.keys()))
 
     # Trigger to start/stop monitor cam
     def monitor_trigger(self):
