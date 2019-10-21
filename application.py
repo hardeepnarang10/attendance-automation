@@ -662,6 +662,7 @@ class Object:
 
         # Instantiate objects
         # Create instance of Attribute class to fetch attributes from
+        # emulated console - this needs to be passed as an argument to other classes
         self.attribute = Attribute()
 
         # Instantiate objects using __init__() and attribute object values
@@ -836,6 +837,15 @@ class Monitor(Utility):
         # Change START on button_monitor to STOP
         self.button_monitor.setText(self.qtranslate(self.centralwidget_name, 'STOP Monitor'))
 
+        # If self.monitor is True, attendance monitor starts
+
+        # Disable window close button
+        self.main_window.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
+
+        # Main window closes on close button state change - show window again
+        if not self.main_window.isVisible():
+            self.main_window.show()
+
         while self.monitor:
 
             # Check for lecture time, warning, lecture_flush, college over & total_flush - move this step up sequence
@@ -882,6 +892,13 @@ class Monitor(Utility):
         # Print stopping message
         print('Stopping monitor mode...')
 
+        # Enable windows close button
+        self.main_window.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, True)
+
+        # Main window closes on close button state change - show window again
+        if not self.main_window.isVisible():
+            self.main_window.show()
+
         # Reset application state
         self.monitor = False
         self.cam_on = False
@@ -891,6 +908,7 @@ class Monitor(Utility):
 
         # Clear camera frame - QFrame and reset button_monitor text
         self.frame_cam.clear()
+        self.frame_cam.setText(self.qtranslate(self.centralwidget_name, 'Camera Output'))
         self.button_monitor.setText(self.qtranslate(self.centralwidget_name, 'START Monitor'))
 
         # Check if lecture active - flush attendance if True
@@ -1042,6 +1060,7 @@ class Application(Monitor):
         self.attach_btn()
 
         # Import attributes and objects
+        # Passed print() which prints output to console emulation in application instead of stdout
         self.obj = Object(qicon=self.qicon, application_window=self.application)
         self.attribute = self.obj.return_attribute_obj()
 
@@ -1068,6 +1087,19 @@ class Application(Monitor):
         # Set window fixed size - prevent maximize-restore
         dashboard_window.setFixedSize(1000, 518)
 
+        # Set window title
+        dashboard_window.setWindowTitle(self.qtranslate(self.centralwidget_name, "AMC Dashboard"))
+
+        # Name and path of main window icon file
+        self.window_icon_container = 'components'
+        self.window_icon_filename = 'amc.png'
+        self.window_icon_filepath = abspath(join(dirname(__name__), self.window_icon_container,
+                                                 self.window_icon_filename))
+
+        # Set window icon
+        self.qicon.addPixmap(QtGui.QPixmap(self.window_icon_filepath))
+        dashboard_window.setWindowIcon(self.qicon)
+
         # Set dashboard_window as central widget (root) which further contains (encloses) other widgets
         self.centralwidget = QtWidgets.QWidget(dashboard_window)
         dashboard_window.setCentralWidget(self.centralwidget)
@@ -1080,6 +1112,16 @@ class Application(Monitor):
         # Give frame a box enclosure (boundary)
         self.frame_cam.setFrameShape(QtWidgets.QFrame.Box)
 
+        # Add font style properties
+        self.qfont.setFamily('Segoi UI')
+        self.qfont.setPointSize(20)
+        self.frame_cam.setFont(self.qfont)
+        self.frame_cam.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+        self.frame_cam.setStyleSheet('background: rgb(0, 40, 100); color: white;')
+        self.frame_cam.setAlignment(QtCore.Qt.AlignCenter)
+        self.frame_cam.setText(self.qtranslate(self.centralwidget_name, 'Camera Output'))
+
+
     # Setup right pane buttons
     def setup_btn(self):
 
@@ -1087,6 +1129,13 @@ class Application(Monitor):
         _btn_offset_x_ = 20
         _btn_height_ = 108
         _btn_offset_margin_ = 15
+
+        # Define font properties
+        self.qfont.setFamily('Arial')
+        self.qfont.setPointSize(10)
+
+        # Identifies second last button
+        last_button_key = list(self.buttons.keys())[-2]
 
         # Instantiate button objects using self.buttons dict() items
         for btn_name, btn_text in self.buttons.items():
@@ -1098,6 +1147,9 @@ class Application(Monitor):
             button = getattr(self, btn_name)
             button.setGeometry(QtCore.QRect(675, _btn_offset_x_, 305, _btn_height_))
             button.setText(self.qtranslate(self.centralwidget_name, btn_text))
+
+            # Set font properties
+            button.setFont(self.qfont)
 
             # Update next button offset
             _btn_offset_x_ = _btn_offset_x_ + _btn_height_ + _btn_offset_margin_
