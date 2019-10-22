@@ -1,0 +1,17 @@
+[
+    {
+        "Code": "CSE000001",
+        "Name": "Mrs. Faculty One",
+        "Email": "dummymailOne@gmail.com"
+    },
+    {
+        "Code": "CSE000010",
+        "Name": "Ms. Faculty Two",
+        "Email": "dummymailTwo@gmail.com"
+    },
+    {
+        "Code": "CSE000100",
+        "Name": "Mr. Faculty Three",
+        "Email": "dummymailThree@gmail.com"
+    }
+]

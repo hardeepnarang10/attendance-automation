@@ -1,0 +1,106 @@
+{
+    "CSE 5X": {
+        "Monday": [
+            "Java Programming Language",
+            "Computer Networks - II",
+            "Computer Graphics",
+            "Activity - IG Lecture",
+            "Cellular Mobile Communication",
+            "Lunch Break",
+            "Java Programming Lab",
+            "Computer Networks Lab - II"
+        ],
+        "Tuesday": [
+            "Java Programming Language",
+            "Java Programming Lab",
+            "Computer Networks Lab - II",
+            "Automata Theory",
+            "Library",
+            "Lunch Break",
+            "M.P.D.",
+            "M.P.D."
+        ],
+        "Wednesday": [
+            "Java Programming Language",
+            "Computer Graphics",
+            "Cellular Mobile Communication",
+            "Computer Networks - II",
+            "Automata Theory",
+            "Lunch Break",
+            "Library",
+            "CLUB"
+        ],
+        "Thursday": [
+            "Computer Graphics",
+            "Automata Theory",
+            "Java Programming Language",
+            "Activity - IG Lecture",
+            "Cellular Mobile Communication",
+            "Lunch Break",
+            "Soft Skills",
+            "Soft Skills"
+        ],
+        "Friday": [
+            "Computer Networks - II",
+            "Automata Theory",
+            "Activity - IG Lecture",
+            "Computer Graphics",
+            "Cellular Mobile Communication",
+            "Lunch Break",
+            "Computer Networks - II",
+            "Library"
+        ]
+    },
+    "CSE 5Y": {
+        "Monday": [
+            "Java Programming Language",
+            "Java Programming Lab",
+            "Computer Networks Lab - II",
+            "Automata Theory",
+            "Library",
+            "Lunch Break",
+            "M.P.D.",
+            "M.P.D."
+        ],
+        "Tuesday": [
+            "Java Programming Language",
+            "Computer Networks - II",
+            "Computer Graphics",
+            "Activity - IG Lecture",
+            "Cellular Mobile Communication",
+            "Lunch Break",
+            "Java Programming Lab",
+            "Computer Networks Lab - II"
+        ],
+        "Wednesday": [
+            "Java Programming Language",
+            "Computer Graphics",
+            "Cellular Mobile Communication",
+            "Computer Networks - II",
+            "Automata Theory",
+            "Lunch Break",
+            "Library",
+            "CLUB"
+        ],
+        "Thursday": [
+            "Computer Networks - II",
+            "Automata Theory",
+            "Activity - IG Lecture",
+            "Computer Graphics",
+            "Cellular Mobile Communication",
+            "Lunch Break",
+            "Computer Networks - II",
+            "Library"
+        ],
+        "Friday": [
+            "Computer Graphics",
+            "Automata Theory",
+            "Java Programming Language",
+            "Activity - IG Lecture",
+            "Cellular Mobile Communication",
+            "Lunch Break",
+            "Soft Skills",
+            "Soft Skills"
+        ]
+    }
+}
