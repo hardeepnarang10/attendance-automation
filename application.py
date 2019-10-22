@@ -29,6 +29,7 @@ try:
     from hashlib import sha256
     from os.path import abspath, basename, dirname, join
     from math import floor
+    from configparser import ConfigParser, NoOptionError
     from argparse import ArgumentParser
 
 except ModuleNotFoundError:
@@ -600,19 +601,130 @@ class Mailer:
             print('Failure to establish connection with the server.\nToken saved locally instead.')
 
 
+class Config:
+    def __init__(self, qicon, obj):
+
+        # Set class-wide attributes
+        # Assign parameters to class-wide variables
+        self.obj = obj
+        self.qicon = qicon
+
+        self.qtranslate = self.qtranslate = QtCore.QCoreApplication.translate
+        self.centralwidget_name = 'dashboard'
+
+    # Launch QDialog box to configure AMC values
+    def config_manager(self):
+
+        # Instantiate QDialog() object and set it's properties
+        config_dialog = QtWidgets.QDialog()
+        config_dialog.setObjectName(self.centralwidget_name)
+        config_dialog.setFixedSize(544, 346)
+        config_dialog.setWindowTitle(self.qtranslate(self.centralwidget_name, "AMC Configure"))
+        config_dialog.setWindowIcon(self.qicon)
+
+        # Instantiate QPushButton() object as Save button
+        self.save_button = QtWidgets.QPushButton(config_dialog)
+
+        # Read config items from config value(s) imported earlier
+        self.configurations = self.obj.attribute.config.items(self.obj.attribute.config.sections()[0])
+
+        # Create records and reverse-lookup records for future use
+        self.key_name = {'token_limit': 'Token Limit: ',
+                         'warning_period_minutes': 'Warning Time (Minutes): ',
+                         'batch_name': r'Batch/Section Name: ',
+                         'hod_email': 'Department Central Email: ',
+                         'amc_email': 'Controller Email: ',
+                         'amc_password': 'Controller Password: '}
+
+        self.val_name = {v: k for k, v in self.key_name.items()}
+
+        # Keep count on function calls
+        self.count = 0
+
+        # Length values for element placement on QDialog box
+        _txtbox_offset_x_ = 30
+        _txtbox_height_ = 25
+        _txtbox_offset_margin_ = 15
+
+        # Dynamically instantiate QLabels and QLineText fields as per items in config container
+        for element in self.configurations:
+            setattr(self, 'label_' + element[0], QtWidgets.QLabel(config_dialog))
+            label = getattr(self, 'label_' + element[0])
+            label.setGeometry(QtCore.QRect(40, _txtbox_offset_x_, 225, _txtbox_height_))
+            # label.setFrameShape(QtWidgets.QFrame.Box)
+            label.setText(self.qtranslate(self.centralwidget_name, self.key_name[element[0]]))
+            label.setAlignment(QtCore.Qt.AlignCenter)
+
+            setattr(self, 'txtbox_' + element[0], QtWidgets.QLineEdit(config_dialog))
+            txt_box = getattr(self, 'txtbox_' + element[0])
+            txt_box.setGeometry(QtCore.QRect(275, _txtbox_offset_x_, 225, _txtbox_height_))
+            txt_box.setText(self.qtranslate(self.centralwidget_name, element[1]))
+            txt_box.setAlignment(QtCore.Qt.AlignCenter)
+
+            # Update offset value for next set of placements
+            _txtbox_offset_x_ = _txtbox_offset_x_ + _txtbox_height_ + _txtbox_offset_margin_
+
+            # Define click slot to connect to save_config() function
+            self.save_button.clicked.connect(partial(self.save_config, label, txt_box))
+
+        # Translate save_button properties
+        self.save_button.setGeometry(
+            QtCore.QRect(40, _txtbox_offset_x_+10, 460, int(_txtbox_height_ * 1.5)))
+        self.save_button.setText(self.qtranslate(self.centralwidget_name, 'Save Configuration'))
+
+        # Show dialog box
+        config_dialog.show()
+        config_dialog.exec_()
+
+    # Function to save updated configuration
+    def save_config(self, qlabel, qtxtbox):
+
+        # Set values to config instance
+        self.obj.attribute.config.set(self.obj.attribute.config.sections()[0],
+                                      self.val_name[qlabel.text()], qtxtbox.text())
+
+        # Update count - this function gets called mutiple times for a single click due to multiple slots
+        # Save only once when all calls are executed; update count
+        self.count = self.count + 1
+        if self.count == len(self.configurations):
+            # Save configuration container to a file
+            with open(self.obj.path_config, mode='w') as config_file:
+                self.obj.attribute.config.write(config_file)
+                config_file.close()
+
+            # Print message and update count
+            print('Configuration saved! Restart application to load new settings.')
+            self.count = 0
+
+
 class Attribute:
 
     # Meta class
     # Pre-set attributes that define behaviour of application; Used by all other classes
-    def __init__(self):
+    def __init__(self, path_config):
 
-        self.tokenLimit = 1000000000000
-        self.warning_period_minutes = 1
+        # Instantiate ConfigParser class; read config.ini file
+        self.config = ConfigParser()
+        self.config.read(path_config)
 
-        self.batch_name = 'CSE 5X'
-        self.hod_email = 'dummy_mail@gmail.com'
-        self.amc_email = 'dummy_mail@gmail.com'
-        self.amc_password = 'dummy_pass'
+        # Import values from configuration file
+        try:
+            _index_name_ = self.config.sections()[0]
+        except IndexError:
+            print('Configuration file does not exist, or is empty! Application couldn\'t start.')
+            exit(-100)
+
+        try:
+            self.tokenLimit = self.config.getint(_index_name_, 'token_limit')
+            self.warning_period_minutes = self.config.getint(_index_name_, 'warning_period_minutes')
+            self.batch_name = self.config.get(_index_name_, 'batch_name')
+            self.hod_email = self.config.get(_index_name_, 'hod_email')
+            self.amc_email = self.config.get(_index_name_, 'amc_email')
+            self.amc_password = self.config.get(_index_name_, 'amc_password')
+
+        except NoOptionError:
+            print('Improper configuration file! Application couldn\'t start.')
+            exit(-100)
 
         self.isAuthenticated = False
         self.isWarned = False
@@ -634,9 +746,11 @@ class Object:
         # Meta - assign folder names containing other folders or file; fetch their absolute path
         self.json_folder_name = 'resource'
         self.database_folder_name = 'database'
+        self.config_folder_name = 'config'
 
         self.json_folder_path = abspath(join(dirname(__file__), self.json_folder_name))
         self.database_folder_path = abspath(join(dirname(__file__), self.database_folder_name))
+        self.config_folder_path = abspath(join(dirname(__file__), self.config_folder_name))
 
         # Assign filename containing operational info; fetch their path - uses meta
         self.file_faculty = 'faculty.json'
@@ -660,9 +774,13 @@ class Object:
         self.schedule_folder_path = join(self.database_folder_path, self.schedule_folder_name)
         self.attendance_folder_path = join(self.database_folder_path, self.attendance_folder_name)
 
+        # Assign configuration file
+        self.file_config = 'config.ini'
+        self.path_config = join(self.config_folder_path, self.file_config)
+
         # Instantiate objects
         # Create instance of Attribute class to fetch attributes from
-        self.attribute = Attribute()
+        self.attribute = Attribute(self.path_config)
 
         # Instantiate objects using __init__() and attribute object values
         self.faculty = Faculty(filepath=self.path_faculty, token=self.attribute.tokenLimit)
@@ -676,6 +794,7 @@ class Object:
                              main_window=application_window)
         self.token = Token(faculty_path=self.path_faculty, output_dir=self.token_folder_path,
                            token_size=self.attribute.tokenLimit, mailer_object=self.mailer)
+        self.config = Config(obj=self, qicon=qicon)
 
     # Function when called returns instance of attribute object used in this class
     def return_attribute_obj(self):
@@ -1191,6 +1310,9 @@ class Application(Monitor):
 
         # Attach generator.run)sequence() as signal to button_schedule click event
         self.button_schedule.clicked.connect(partial(self.obj.scheduler.schedule))
+
+        # Attach config_manager() as signal to button_config click event
+        self.button_config.clicked.connect(partial(self.obj.config.config_manager))
 
         # Attach monitor_trigger() as signal to button_monitor click event
         self.button_monitor.clicked.connect(partial(self.monitor_trigger))
