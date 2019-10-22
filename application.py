@@ -1355,7 +1355,29 @@ class Application(Monitor):
         self.textbrowser_console.repaint()
 
 
+# Process command line arguments
+def argparser():
+
+    # Initiate ArgumentParser(); add argument
+    parser = ArgumentParser(prog='attendance-automation', add_help=False,
+                            description='Attendance Control and Monitor System',
+                            epilog='See project page: https://github.com/hardeepnarang10/attendance-automation')
+    parser.add_argument('--help', '-H', action='help', help="Show this help message and exit.")
+    parser.add_argument('--version', '-V', action='version', version=f'%(prog)s {__version__}',
+                        help="Show program's version number and exit.")
+
+    # Check if unknown argument given.
+    known_args, unknown_args = parser.parse_known_args()
+    if unknown_args: parser.print_help()
+
+    # Return valid argument(s)
+    return known_args
+
+
 if __name__ == '__main__':
+
+    # Process (if passed) command line argument(s)
+    args = argparser()
 
     # Execute GUI from this entry point
     application = Application()
