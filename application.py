@@ -125,12 +125,15 @@ class Faculty:
 
 class Student:
 
-    def __init__(self, filepath, output_dir):
+    def __init__(self, filepath, output_dir, console_output):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
         self.data_file = filepath
         self.output_dir = output_dir
+
+        # Function bound to Application class; prints message to emulated console
+        self.console_output = console_output
 
         # Create shell containers for class-wide use
         self.database = list()
@@ -192,7 +195,7 @@ class Student:
         for each_attendee in self.database:
 
             # Print attendee data
-            print(list(each_attendee.values()))
+            self.console_output(list(each_attendee.values()))
 
             # Set QR code instance properties and save it to output_dir folder
             qr = QRCode(
@@ -215,13 +218,16 @@ class Student:
 
 class Token:
 
-    def __init__(self, faculty_path, output_dir, token_size, mailer_object):
+    def __init__(self, faculty_path, output_dir, token_size, mailer_object, console_output):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
         self.token_size = token_size
         self.faculty_path = faculty_path
         self.output_dir = output_dir
+
+        # Function bound to Application class; prints message to emulated console
+        self.console_output = console_output
 
         # Create shell containers for class-wide use
         self.database = list()
@@ -263,7 +269,7 @@ class Token:
             faculty['session'] = int.from_bytes(hash_bytes, byteorder='big', signed=False) % self.token_size
 
             # Print faculty data - without the actual tokens
-            print(list(faculty.values())[0:-1])
+            self.console_output(list(faculty.values())[0:-1])
 
             # Set QR code instance properties and save it to output_dir folder
             qr = QRCode(version=1, box_size=10, border=4,
@@ -334,7 +340,7 @@ class Timer:
 
 class Scheduler:
 
-    def __init__(self, batch_name, output_dir_path, path_timing, path_lecture):
+    def __init__(self, batch_name, output_dir_path, path_timing, path_lecture, console_output):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
@@ -349,6 +355,9 @@ class Scheduler:
         self.path_lecture = path_lecture
 
         self.temp_key = 'start'
+
+        # Function bound to Application class; prints message to emulated console
+        self.console_output = console_output
 
         # Create shell containers for class-wide use
         self.timing = dict()
@@ -394,7 +403,7 @@ class Scheduler:
     def schedule(self):
 
         # Print message to let user know of this action
-        print('Generating lecture schedule (Excel file: ' + self.filename + ')')
+        self.console_output('Generating lecture schedule (Excel file: ' + self.filename + ')')
 
         # Instantiate writer engine - with path to export it to
         writer = ExcelWriter(self.filepath, engine='xlsxwriter')
@@ -499,7 +508,7 @@ class Export:
 
 class Mailer:
 
-    def __init__(self, batch, email, password, hod_email, main_window):
+    def __init__(self, batch, email, password, hod_email, console_output, main_window):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
@@ -507,6 +516,9 @@ class Mailer:
         self.password = password
         self.hod_email = hod_email
         self.batch = batch
+
+        # Function bound to Application class; prints message to emulated console
+        self.console_output = console_output
 
         # Instance of main application - pass control of the event loop
         self.main_window = main_window
@@ -581,7 +593,7 @@ class Mailer:
             with SMTP_SSL('smtp.gmail.com', 465) as smtp:
 
                 # Login to controller account; print message
-                print('Sending mail now!')
+                self.console_output('Sending mail now!')
                 smtp.login(self.email, self.password)
 
                 # Unfreeze event loop - network operation
@@ -592,21 +604,23 @@ class Mailer:
 
         # Except cases for connection error, socket busy, or authentication failure - print message
         except SMTPAuthenticationError:
-            print('Authentication Failure!\nCheck credentials in Configuration section.\n'
-                  'Also check support for less secure apps in your account:\n'
-                  'Login to controller account.\nGoto: myaccount.google.com/lesssecureapps\n'
-                  'Allow less secure apps access.\n\nToken saved locally instead')
+            self.console_output('Authentication Failure!\nCheck credentials in Configuration section.\n'
+                                'Also check support for less secure apps in your account:\n'
+                                'Login to controller account.\nGoto: myaccount.google.com/lesssecureapps\n'
+                                'Allow less secure apps access.\n\nToken saved locally instead')
 
         except (gaierror, SMTPServerDisconnected, SMTPRecipientsRefused, OSError) as connectionError:
-            print('Failure to establish connection with the server.\nToken saved locally instead.')
+            self.console_output('Failure to establish connection with the server.\nToken saved locally instead.')
 
 
 class Config:
-    def __init__(self, qicon, obj):
+    def __init__(self, qicon, obj, console_output):
 
         # Set class-wide attributes
         # Assign parameters to class-wide variables
         self.obj = obj
+        self.console_output = console_output
+
         self.qicon = qicon
 
         self.qtranslate = self.qtranslate = QtCore.QCoreApplication.translate
@@ -693,7 +707,7 @@ class Config:
                 config_file.close()
 
             # Print message and update count
-            print('Configuration saved! Restart application to load new settings.')
+            self.console_output('Configuration saved! Restart application to load new settings.')
             self.count = 0
 
 
@@ -729,7 +743,6 @@ class Attribute:
         self.isAuthenticated = False
         self.isWarned = False
         self.isFlushed = False
-        self.isTokenGenerated = False
         self.host_faculty = dict()
         self.attendees = list()
         self.attendance_all = dict()
@@ -741,7 +754,7 @@ class Object:
 
     # Meta class
     # Instantiate objects as utilities needed by other classes
-    def __init__(self, qicon, application_window):
+    def __init__(self, console_output, qicon, application_window):
 
         # Meta - assign folder names containing other folders or file; fetch their absolute path
         self.json_folder_name = 'resource'
@@ -780,21 +793,27 @@ class Object:
 
         # Instantiate objects
         # Create instance of Attribute class to fetch attributes from
+        # Import console_output instance bound to Application application which renders output message to
+        # emulated console - this needs to be passed as an argument to other classes
         self.attribute = Attribute(self.path_config)
+        self.console_output = console_output
 
         # Instantiate objects using __init__() and attribute object values
         self.faculty = Faculty(filepath=self.path_faculty, token=self.attribute.tokenLimit)
-        self.student = Student(filepath=self.path_student, output_dir=self.attendee_folder_path)
+        self.student = Student(filepath=self.path_student, output_dir=self.attendee_folder_path,
+                               console_output=self.console_output)
         self.export = Export(folder=self.attendance_folder_path, name=self.attribute.batch_name)
         self.timer = Timer(filepath=self.path_timing)
         self.scheduler = Scheduler(batch_name=self.attribute.batch_name, output_dir_path=self.schedule_folder_path,
-                                   path_lecture=self.path_lecture, path_timing=self.path_timing)
+                                   path_lecture=self.path_lecture, path_timing=self.path_timing,
+                                   console_output=self.console_output)
         self.mailer = Mailer(batch=self.attribute.batch_name, email=self.attribute.amc_email,
                              password=self.attribute.amc_password, hod_email=self.attribute.hod_email,
-                             main_window=application_window)
+                             console_output=self.console_output, main_window=application_window)
         self.token = Token(faculty_path=self.path_faculty, output_dir=self.token_folder_path,
-                           token_size=self.attribute.tokenLimit, mailer_object=self.mailer)
-        self.config = Config(obj=self, qicon=qicon)
+                           token_size=self.attribute.tokenLimit, mailer_object=self.mailer,
+                           console_output=self.console_output)
+        self.config = Config(obj=self, console_output=self.console_output, qicon=qicon)
 
     # Function when called returns instance of attribute object used in this class
     def return_attribute_obj(self):
@@ -815,7 +834,7 @@ class Utility:
     def warn(self):
         self.attribute.isWarned = True
         self.attribute.isFlushed = False
-        print('Warning Generated!')
+        self.console_output('Warning Generated!')
         self.beep(frequency=5000, duration=2000)
 
     # Flush attendance if lecture over, or on program close
@@ -852,7 +871,7 @@ class Utility:
         self.obj.student.student_list.clear()
 
         # Print message and give feedback
-        print('Attendance Flushed!')
+        self.console_output('Attendance Flushed!')
         self.beep(frequency=3500, duration=1000)
 
     # Adjust parameters and call export functions
@@ -885,7 +904,7 @@ class Utility:
     def auth(self, faculty_data):
         self.attribute.isAuthenticated = True
         self.attribute.host_faculty = faculty_data
-        print(f"Lecture held by: {faculty_data['Name']} ({faculty_data['Code']})")
+        self.console_output(f"Lecture held by: {faculty_data['Name']} ({faculty_data['Code']})")
         self.beep(frequency=2500, duration=1250)
 
     # Print text on frame
@@ -934,7 +953,7 @@ class Utility:
 
         # No match found for section name - print message and partially disable interface capabilities
         else:
-            print('Section name not found in database!')
+            self.console_output('Section name not found in database!')
             for btn in self.buttons:
                 if btn == 'btn_schedule' or btn == 'btn_config':
                     continue
@@ -947,7 +966,7 @@ class Monitor(Utility):
     def monitor_cam(self):
 
         # Print message
-        print('Starting monitor mode...')
+        self.console_output('Starting monitor mode...')
 
         # Setup video capture stream from specified capture device
         self.capture = cv2.VideoCapture(self.capture_device, cv2.CAP_DSHOW)
@@ -1008,7 +1027,7 @@ class Monitor(Utility):
     def stop_monitor(self):
 
         # Print stopping message
-        print('Stopping monitor mode...')
+        self.console_output('Stopping monitor mode...')
 
         # Enable windows close button
         self.main_window.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, True)
@@ -1077,7 +1096,7 @@ class Monitor(Utility):
         else:
 
             # If current time doesn't match a time slot, college is over
-            print('Outside college working hours!')
+            self.console_output('Outside college working hours!')
             self.monitor = False
             self.stop_monitor()
             self.college_over()
@@ -1102,7 +1121,7 @@ class Monitor(Utility):
         try:
             decoded_list = decode(frame)
         except TypeError:
-            print('Camera not found!')
+            self.console_output('Camera not found!')
             self.monitor = False
             return -1
 
@@ -1183,8 +1202,8 @@ class Application(Monitor):
         self.setup_console()
 
         # Import attributes and objects
-        # Passed print() which prints output to console emulation in application instead of stdout
-        self.obj = Object(qicon=self.qicon, application_window=self.application)
+        # Passed self.console_output() which prints output to console emulation in application instead of stdout
+        self.obj = Object(console_output=self.console_output, qicon=self.qicon, application_window=self.application)
         self.attribute = self.obj.return_attribute_obj()
 
         # Trigger setup functions
@@ -1316,6 +1335,24 @@ class Application(Monitor):
 
         # Attach monitor_trigger() as signal to button_monitor click event
         self.button_monitor.clicked.connect(partial(self.monitor_trigger))
+
+    # Print to console emulator in GUI
+    def console_output(self, msg):
+
+        # Fetch text already in QTextBrowser
+        pre_text = self.textbrowser_console.toPlainText()
+
+        # Newline addition only if pre_text exist
+        if pre_text:
+            self.textbrowser_console.setText(self.qtranslate(self.centralwidget_name, (pre_text + '\n' + str(msg))))
+        else:
+            self.textbrowser_console.setText(self.qtranslate(self.centralwidget_name, str(msg)))
+
+        # Move cursor view to the end - scroll view
+        self.textbrowser_console.moveCursor(QtGui.QTextCursor.End)
+
+        # Repaint to force event loop to render at each call
+        self.textbrowser_console.repaint()
 
 
 if __name__ == '__main__':
