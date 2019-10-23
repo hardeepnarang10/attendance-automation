@@ -171,18 +171,22 @@ class Student:
             mid = floor((left_index + right_index) / 2)
 
             # If element is present at the middle itself
-            if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
-                return base_list[mid]
+            try:
+                if int(base_list[mid]['Roll_Number']) == int(roll) and str(base_list[mid]['Name']) == str(name):
+                    return base_list[mid]
 
-            # If element is smaller than mid, check left_index subarray
-            elif int(base_list[mid]['Roll_Number']) > int(roll):
-                return self.validate(base_list=base_list, left_index=left_index, right_index=mid+1,
-                                     roll=roll, name=name)
+                # If element is smaller than mid, check left_index subarray
+                elif int(base_list[mid]['Roll_Number']) > int(roll):
+                    return self.validate(base_list=base_list, left_index=left_index, right_index=mid - 1,
+                                         roll=roll, name=name)
 
-            # Else check right subarray
-            else:
-                return self.validate(base_list=base_list, left_index=mid-1, right_index=right_index,
-                                     roll=roll, name=name)
+                # Else check right subarray
+                else:
+                    return self.validate(base_list=base_list, left_index=mid + 1, right_index=right_index,
+                                         roll=roll, name=name)
+
+            except ValueError:
+                return None
 
         else:
             # Element is not present in the array
