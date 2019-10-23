@@ -41,6 +41,8 @@ In case QR code system doesn't serve to suffice, there is an option for easy upg
 Of course this upgrade comes at the cost of having to train the biometric model with each entry containing multiple biometric scans of the same person, without certainty of accurate recognition.
 
 
+
+
 ## Requirements
 
 - Python3.7+ (and all required python3 modules)
@@ -65,31 +67,44 @@ Of course this upgrade comes at the cost of having to train the biometric model 
 ## Instructions
 
 (Make sure you have python  and all the above mentioned pip modules installed on your system)
+
 **Check 'Add Python 3.x to PATH' during installation**.
 
 1. <a href="https://github.com/hardeepnarang10/attendance-automation/archive/master.zip">Download</a> and extract the zip file.
 
-2. Go to 'resources' folder and edit all the JSON files. (You may use the dummy files for testing - check 'dummy-data' directory) (Use <a href="http://jsoneditoronline.org/">this online editor</a> to check formatting errors)
+2. Install requirements (navigate to root directory on command line). Run command:
 
-3. From root as present working directory, run the following command:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Go to 'resources' folder and edit all the JSON files. (You may use the dummy files for testing - check 'dummy-data' directory) (Use <a href="http://jsoneditoronline.org/">this online editor</a> to check formatting errors)
+
+4. From root as present working directory, run the following command:
 
    ```python
    python application.py
    ```
 
-4. In the window that opens, click on 'Configure AMC values'. Enter required values. Restart application using the above command.
+5. In the window that opens, click on 'Configure AMC values'. Enter required values. Restart application using the above command.
 
-5. Generate Session Tokens and Attendee Tokens and distribute them as per your requirement.
+6. Generate Session Tokens and Attendee Tokens and distribute them as per your requirement.
 
-6. Make sure you have a webcam connected and installed on your system. AMC System uses primary camera for capturing sessions, make sure its not being used by another application. (Try connecting through different ports if you're using an external webcam)
+7. Make sure you have a webcam connected and installed on your system. AMC System uses primary camera for capturing sessions, make sure its not being used by another application. (Try connecting through different ports if you're using an external webcam)
 
-7. Start Attendance Monitor.
+8. Start Attendance Monitor.
 
 
 
 ## Version
 
-AMC System v2.0.0 is its first public release.
+AMC System v2.0.0 is its first public release (see commit: [61c13ab](https://github.com/hardeepnarang10/attendance-automation/commit/61c13abe1ac3bbd9f1cc65746896f0a0992ed5d5)).
+
+
+
+## Contributions
+
+Contributions are welcome. Make a [pull request](../../pulls).
 
 
 
