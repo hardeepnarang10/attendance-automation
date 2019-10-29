@@ -61,12 +61,14 @@ Of course this upgrade comes at the cost of having to train the biometric model 
   - qrcode==6.1
   - six==1.12.0
   - XlsxWriter==1.2.2
+- Visual C++ Redistributable Packages (x64 or x86)
+  (<a href="https://www.microsoft.com/en-US/download/details.aspx?id=40784">Download Here</a>)
 
 
 
 ## Instructions
 
-(Make sure you have python  and all the above mentioned pip modules installed on your system)
+(Make sure you have python, above mentioned pip modules, and visual C++ redistributable packages installed on your system)
 
 **Check 'Add Python 3.x to PATH' during installation**.
 
