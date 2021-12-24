@@ -1,6 +1,6 @@
 colorama==0.4.1
 numpy==1.17.3
-opencv-python==4.1.1.26
+opencv-python==4.2.0.32
 pandas==0.25.2
 Pillow==8.3.2
 PyQt5==5.13.1
