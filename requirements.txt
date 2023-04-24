@@ -1,5 +1,5 @@
 colorama==0.4.1
-numpy==1.17.3
+numpy==1.22.0
 opencv-python==4.2.0.32
 pandas==0.25.2
 Pillow==9.3.0
